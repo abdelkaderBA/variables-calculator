@@ -30,11 +30,19 @@ class VariableCalculator {
 
     this.updateHyperFormula();
     this.renderTable();
-    this.recalculateVariables();
+    this.recalculateAll();
   }
 
   setupEventListeners() {
     const tableBody = document.getElementById("tableBody");
+
+    tableBody.addEventListener("click", (e) => {
+      const cell = e.target.closest("td.value-cell");
+      const code = cell?.dataset.code;
+
+      this.showFormulaInput(cell, code);
+    });
+
     tableBody.addEventListener(
       "blur",
       (e) => {
@@ -53,6 +61,19 @@ class VariableCalculator {
     });
   }
 
+  showFormulaInput(cell, code) {
+    const variable = this.variables.get(code);
+    if (!variable) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = variable?.formula;
+    input.dataset.code = code;
+
+    cell.textContent = "";
+    cell.appendChild(input);
+    input.focus();
+  }
+
   handleFormulaChange(input) {
     const code = input.dataset.code;
     const newFormula = input.value;
@@ -61,6 +82,11 @@ class VariableCalculator {
     if (variable && variable.formula !== newFormula) {
       variable.formula = newFormula;
       this.recalculateFromVariable(code);
+    }
+
+    const cell = input.parentElement;
+    if (cell) {
+      cell.textContent = variable.value !== null ? variable.value : "";
     }
   }
 
@@ -75,26 +101,19 @@ class VariableCalculator {
       codeCell.textContent = code;
       row.appendChild(codeCell);
 
-      const formulaCell = document.createElement("td");
-      const formulaInput = document.createElement("input");
-      formulaInput.type = "text";
-      formulaInput.value = variable.formula;
-      formulaInput.dataset.code = code;
-      formulaCell.appendChild(formulaInput);
-      row.appendChild(formulaCell);
-
       const valueCell = document.createElement("td");
-      valueCell.id = `value-${code}`;
+      valueCell.className = "value-cell";
+      valueCell.dataset.code = code;
       valueCell.textContent = variable.value !== null ? variable.value : "";
-      row.appendChild(valueCell);
 
+      row.appendChild(valueCell);
       tableBody.appendChild(row);
     });
   }
 
   recalculateFromVariable(startCode) {
-    this.findAffectedVariables(startCode);
-    this.recalculateVariables();
+    const affectedVariables = this.findAffectedVariables(startCode);
+    this.recalculateVariables(affectedVariables);
   }
 
   findAffectedVariables(startCode) {
@@ -109,6 +128,10 @@ class VariableCalculator {
     return Array.from(affected);
   }
 
+  recalculateAll() {
+    this.recalculateVariables(Array.from(this.variables.keys()));
+  }
+
   convertFormulaToHyperFormula(formula) {
     if (!isNaN(formula)) return formula;
     return "=" + formula.replace(/VAR_(\d+)/g, (match, num) => `A${num}`);
@@ -119,15 +142,14 @@ class VariableCalculator {
       return [this.convertFormulaToHyperFormula(v.formula)];
     });
 
-    this.hyperFormula = HyperFormula.buildFromArray(data, {
-      licenseKey: "gpl-v3",
-    });
+    this.hyperFormula = HyperFormula.buildFromArray(data);
   }
 
-  recalculateVariables() {
+  recalculateVariables(variableCodes) {
     this.updateHyperFormula();
 
-    this.variables.forEach((variable, code) => {
+    variableCodes.forEach((code) => {
+      const variable = this.variables.get(code);
       const index = parseInt(code.split("_")[1]) - 1;
       const value = this.hyperFormula.getCellValue({
         sheet: 0,
@@ -136,8 +158,10 @@ class VariableCalculator {
       });
       variable.value = value;
 
-      const valueCell = document.getElementById(`value-${code}`);
-      if (valueCell) {
+      const valueCell = document.querySelector(
+        `td.value-cell[data-code="${code}"]`
+      );
+      if (valueCell && !valueCell.querySelector("input")) {
         valueCell.textContent =
           value !== null && value !== "#NAME?" ? value.toString() : "";
       }
